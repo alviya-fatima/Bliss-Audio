@@ -1,0 +1,520 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Spectrogram Scope</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+/* Layout: one instrument column. Header, load strip, control panel, then a wide scope with axes and a pointer readout, then short field notes. */
+:root{
+  --bg:#EDF0F5; --panel:#FFFFFF; --ink:#13203A; --muted:#58677F; --line:#CBD3E0;
+  --accent:#2457E6; --accent-ink:#FFFFFF; --sel:#E3A008; --scope:#0A0F18; --warn:#B4231B;
+  --sans:'IBM Plex Sans',system-ui,-apple-system,'Segoe UI',sans-serif;
+  --mono:'IBM Plex Mono',ui-monospace,Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0D141E; --panel:#141D2A; --ink:#E6ECF5; --muted:#8FA0B6; --line:#26334A;
+    --accent:#7EA3FF; --accent-ink:#0D141E; --sel:#F2B632; --scope:#05080D; --warn:#FF8A80;
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0D141E; --panel:#141D2A; --ink:#E6ECF5; --muted:#8FA0B6; --line:#26334A;
+  --accent:#7EA3FF; --accent-ink:#0D141E; --sel:#F2B632; --scope:#05080D; --warn:#FF8A80;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:15px;line-height:1.5}
+.wrap{max-width:1100px;margin:0 auto;padding-block:24px 40px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));display:flex;flex-direction:column;gap:16px}
+h1{margin:0;font-size:clamp(26px,5vw,36px);line-height:1.1;font-weight:600;letter-spacing:-0.01em;text-wrap:balance}
+.lede{margin:6px 0 0;color:var(--muted);max-width:62ch}
+.mono{font-family:var(--mono)}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px}
+.load{display:flex;flex-wrap:wrap;align-items:center;gap:12px 16px}
+.load .meta{flex:1 1 260px;min-width:0}
+.load .name{font-family:var(--mono);font-size:13px;overflow-wrap:anywhere}
+.load .sub{color:var(--muted);font-size:13px}
+.drop{border:1.5px dashed var(--line);border-radius:10px;padding:14px 16px;display:flex;flex-wrap:wrap;align-items:center;gap:10px 14px;background:var(--panel);transition:border-color .15s}
+.drop.over{border-color:var(--accent)}
+.drop input[type=file]{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
+.btn{font:500 14px var(--sans);color:var(--ink);background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:7px 12px;cursor:pointer}
+.btn:hover{border-color:var(--accent)}
+.btn:disabled{opacity:.45;cursor:default;border-color:var(--line)}
+.btn.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+.btn:focus-visible,input:focus-visible,select:focus-visible,.drop:focus-within{outline:2px solid var(--accent);outline-offset:2px}
+.presets{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:14px}
+.presets .lbl,.field>span.lbl{font-family:var(--mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.groups{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:16px}
+.group{min-width:0;display:flex;flex-direction:column;gap:10px}
+.group h2{margin:0;font-size:13px;font-weight:600}
+.pair{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.field{display:flex;flex-direction:column;gap:4px;min-width:0}
+.field input[type=number],.field select{width:100%;font:400 14px var(--mono);color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:6px 8px}
+.field input[type=range]{width:100%;accent-color:var(--accent)}
+.field .val{font-family:var(--mono);font-size:12px;color:var(--ink)}
+.row{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+.check{display:flex;align-items:center;gap:8px;font-size:14px}
+.check input{accent-color:var(--accent)}
+.btns{display:flex;gap:8px;flex-wrap:wrap}
+.scopecard{padding:14px 14px 10px}
+.scope{display:grid;grid-template-columns:62px minmax(0,1fr);grid-template-rows:auto 26px}
+.yaxis{position:relative}
+.yaxis span{position:absolute;right:8px;transform:translateY(-50%);font:400 11px var(--mono);color:var(--muted);white-space:nowrap}
+.xaxis{position:relative;grid-column:2}
+.xaxis span{position:absolute;top:6px;transform:translateX(-50%);font:400 11px var(--mono);color:var(--muted);white-space:nowrap}
+.xaxis span.first{transform:none}
+.xaxis span.last{transform:translateX(-100%)}
+.stage{position:relative;background:var(--scope);border-radius:4px;overflow:hidden;cursor:crosshair;touch-action:none;min-height:160px;user-select:none;-webkit-user-select:none}
+.stage img{display:block;width:100%;height:auto;-webkit-user-drag:none;user-select:none}
+.sel{position:absolute;border:2px solid var(--sel);background:rgba(227,160,8,.16);pointer-events:none}
+.bar{height:3px;background:var(--line);border-radius:2px;overflow:hidden;margin-top:8px}
+.bar i{display:block;height:100%;width:0;background:var(--accent)}
+.status{margin:0;font-size:13px;color:var(--muted);min-height:20px}
+.status.err{color:var(--warn)}
+.readout{font:400 12px var(--mono);color:var(--muted);min-height:18px;margin-top:2px}
+.tips{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px 24px}
+.tips h2{margin:0 0 4px;font-size:13px;font-weight:600}
+.tips p{margin:0;font-size:13px;color:var(--muted)}
+.hint{font-size:13px;color:var(--muted);margin:0}
+@media (max-width:520px){.scope{grid-template-columns:50px minmax(0,1fr)}}
+</style>
+<style>html{padding-block:env(safe-area-inset-top,0px) env(safe-area-inset-bottom,0px)}body{margin:0}</style>
+</head>
+<body>
+
+
+<main class="wrap">
+  <header>
+    <h1>Spectrogram Scope</h1>
+    <p class="lede">Open an audio file, then drag a box over the bright band to zoom until the hidden text is readable. Everything is computed in this browser tab and nothing is uploaded.</p>
+  </header>
+
+  <label class="drop" id="drop">
+    <input type="file" id="file" accept="audio/*,.wav,.mp3,.flac,.ogg,.oga,.opus,.m4a,.aac,.aif,.aiff,.wma">
+    <span class="btn primary" id="pick">Choose audio file</span>
+    <span class="hint">or drop it here. WAV of any size works best; MP3, FLAC, OGG and M4A are decoded by your browser.</span>
+  </label>
+
+  <section class="panel load" aria-live="polite">
+    <div class="meta">
+      <div class="name" id="fname">Demo clip (generated here)</div>
+      <div class="sub" id="finfo">Sample with the words HELLO CTF drawn into the sound. Load your own file above.</div>
+    </div>
+  </section>
+
+  <section class="panel">
+    <div class="presets">
+      <span class="lbl">Presets</span>
+      <button class="btn" type="button" data-preset="overview">Overview</button>
+      <button class="btn" type="button" data-preset="text">Text hunt</button>
+      <button class="btn" type="button" data-preset="sharp">Slow and sharp</button>
+    </div>
+    <div class="groups">
+      <div class="group">
+        <h2>Region</h2>
+        <div class="pair">
+          <label class="field"><span class="lbl">Low Hz</span><input type="number" id="f0" min="0" step="10"></label>
+          <label class="field"><span class="lbl">High Hz</span><input type="number" id="f1" min="0" step="10"></label>
+          <label class="field"><span class="lbl">Start s</span><input type="number" id="t0" min="0" step="0.1"></label>
+          <label class="field"><span class="lbl">End s</span><input type="number" id="t1" min="0" step="0.1"></label>
+        </div>
+        <div class="btns">
+          <button class="btn" type="button" id="back" disabled>Back</button>
+          <button class="btn" type="button" id="reset">Show everything</button>
+        </div>
+      </div>
+      <div class="group">
+        <h2>Analysis</h2>
+        <label class="field"><span class="lbl">Channel</span>
+          <select id="mode">
+            <option value="mix">Mix of both</option>
+            <option value="L">Left only</option>
+            <option value="R">Right only</option>
+            <option value="diff">Left minus right</option>
+          </select>
+        </label>
+        <div class="pair">
+          <label class="field"><span class="lbl">Window size</span>
+            <select id="fft">
+              <option>512</option><option>1024</option><option selected>2048</option><option>4096</option><option>8192</option><option>16384</option>
+            </select>
+          </label>
+          <label class="field"><span class="lbl">Columns</span>
+            <select id="cols"><option>800</option><option selected>1600</option><option>2400</option></select>
+          </label>
+        </div>
+      </div>
+      <div class="group">
+        <h2>Look</h2>
+        <label class="field"><span class="lbl">Colours</span>
+          <select id="cmap"><option value="heat">Heat</option><option value="grey">Greyscale</option><option value="viridis">Viridis</option></select>
+        </label>
+        <label class="field"><span class="row"><span class="lbl">Noise floor</span><span class="val" id="floorv"></span></span>
+          <input type="range" id="floor" min="0" max="99" step="1" value="70"></label>
+        <label class="field"><span class="row"><span class="lbl">Brightest</span><span class="val" id="ceilv"></span></span>
+          <input type="range" id="ceil" min="90" max="100" step="0.05" value="99.9"></label>
+        <label class="check"><input type="checkbox" id="inv"> Invert colours</label>
+      </div>
+    </div>
+  </section>
+
+  <section class="panel scopecard">
+    <div class="scope">
+      <div class="yaxis" id="yaxis"></div>
+      <div class="stage" id="stage"><img id="shot" alt="Spectrogram of the loaded audio" draggable="false"><div class="sel" id="sel" hidden></div></div>
+      <div class="xaxis" id="xaxis"></div>
+    </div>
+    <div class="bar" id="bar" hidden><i id="barfill"></i></div>
+    <p class="status" id="status" role="status"></p>
+    <div class="readout" id="readout"></div>
+    <p class="hint">Drag a box on the picture to zoom into it. To save the picture, right-click it on a computer or take a screenshot on a phone, then send that.</p>
+  </section>
+
+  <section class="panel tips">
+    <div><h2>Letters look smeared sideways</h2><p>Lower the window size. Short windows keep time detail.</p></div>
+    <div><h2>Letters look smeared up and down</h2><p>Raise the window size. Long windows keep frequency detail.</p></div>
+    <div><h2>Nothing readable</h2><p>Try Left minus right, then the Greyscale preset, then zoom into the first and last few seconds.</p></div>
+  </section>
+</main>
+
+<script>
+(function(){
+'use strict';
+var $=function(id){return document.getElementById(id)};
+var clamp=function(v,a,b){return v<a?a:v>b?b:v};
+var stage=$('stage'), img=$('shot'), sel=$('sel');
+var cv=document.createElement('canvas'), cctx=cv.getContext('2d');
+var src=null, mat=null, view=null, hist=[], job=0, blobUrl=null, drag=null, rafPending=false;
+
+/* ---------- audio sources ---------- */
+function arraySource(chs,sr){
+  var len=chs[0].length;
+  return {sr:sr,len:len,nch:chs.length,chan:function(c,start,n,out){
+    var a=chs[Math.min(c,chs.length-1)];
+    for(var i=0;i<n;i++){var k=start+i;out[i]=(k<0||k>=len)?0:a[k];}
+  }};
+}
+function parseWav(buf){
+  if(buf.byteLength<44)return null;
+  var dv=new DataView(buf);
+  if(dv.getUint32(0)!==0x52494646||dv.getUint32(8)!==0x57415645)return null;
+  var p=12,fmt=null,dataOff=0,dataLen=0;
+  while(p+8<=dv.byteLength){
+    var id=dv.getUint32(p),sz=dv.getUint32(p+4,true);
+    if(id===0x666d7420){
+      fmt={tag:dv.getUint16(p+8,true),nch:dv.getUint16(p+10,true),sr:dv.getUint32(p+12,true),bits:dv.getUint16(p+22,true)};
+      if(fmt.tag===0xFFFE&&sz>=26)fmt.tag=dv.getUint16(p+8+24,true);
+    }else if(id===0x64617461){
+      dataOff=p+8;
+      dataLen=(sz===0||sz>dv.byteLength-dataOff)?dv.byteLength-dataOff:sz;
+      break;
+    }
+    p+=8+sz+(sz&1);
+  }
+  if(!fmt||!dataOff||!fmt.nch||!fmt.sr)return null;
+  var bits=fmt.bits,B=bits>>3,rd=null;
+  if(fmt.tag===1){
+    if(bits===8)rd=function(o){return (dv.getUint8(o)-128)/128};
+    else if(bits===16)rd=function(o){return dv.getInt16(o,true)/32768};
+    else if(bits===24)rd=function(o){var v=dv.getUint8(o)|(dv.getUint8(o+1)<<8)|(dv.getUint8(o+2)<<16);if(v&0x800000)v|=~0xFFFFFF;return v/8388608};
+    else if(bits===32)rd=function(o){return dv.getInt32(o,true)/2147483648};
+  }else if(fmt.tag===3){
+    if(bits===32)rd=function(o){return dv.getFloat32(o,true)};
+    else if(bits===64)rd=function(o){return dv.getFloat64(o,true)};
+  }
+  if(!rd)return null;
+  var frame=fmt.nch*B,len=Math.floor(dataLen/frame);
+  if(len<2)return null;
+  return {sr:fmt.sr,len:len,nch:fmt.nch,bits:bits,chan:function(c,start,n,out){
+    var base=dataOff+Math.min(c,fmt.nch-1)*B;
+    for(var i=0;i<n;i++){var k=start+i;out[i]=(k<0||k>=len)?0:rd(base+k*frame);}
+  }};
+}
+function readMode(s,mode,start,n,tmp,out){
+  if(s.nch<2||mode==='L'){s.chan(0,start,n,out);return;}
+  if(mode==='R'){s.chan(1,start,n,out);return;}
+  s.chan(0,start,n,out);s.chan(1,start,n,tmp);
+  var i;
+  if(mode==='diff'){for(i=0;i<n;i++)out[i]=out[i]-tmp[i];}
+  else{for(i=0;i<n;i++)out[i]=(out[i]+tmp[i])*0.5;}
+}
+
+/* ---------- FFT ---------- */
+var fftCache={};
+function getFFT(N){
+  if(fftCache[N])return fftCache[N];
+  var bits=Math.round(Math.log2(N)),cos=new Float32Array(N/2),sin=new Float32Array(N/2),rev=new Uint32Array(N),win=new Float32Array(N),k,i,b;
+  for(k=0;k<N/2;k++){cos[k]=Math.cos(2*Math.PI*k/N);sin[k]=Math.sin(2*Math.PI*k/N);}
+  for(i=0;i<N;i++){var r=0,x=i;for(b=0;b<bits;b++){r=(r<<1)|(x&1);x>>=1;}rev[i]=r;win[i]=0.5-0.5*Math.cos(2*Math.PI*i/(N-1));}
+  return (fftCache[N]={cos:cos,sin:sin,rev:rev,win:win});
+}
+function fft(re,im,t){
+  var N=re.length,cos=t.cos,sin=t.sin,rev=t.rev,i,x;
+  for(i=0;i<N;i++){var j=rev[i];if(j>i){x=re[i];re[i]=re[j];re[j]=x;x=im[i];im[i]=im[j];im[j]=x;}}
+  for(var size=2;size<=N;size<<=1){
+    var half=size>>1,step=N/size;
+    for(i=0;i<N;i+=size){
+      for(var q=0,k=0;q<half;q++,k+=step){
+        var a=i+q,b=a+half,c=cos[k],s=sin[k];
+        var tr=re[b]*c+im[b]*s,ti=im[b]*c-re[b]*s;
+        re[b]=re[a]-tr;im[b]=im[a]-ti;re[a]+=tr;im[a]+=ti;
+      }
+    }
+  }
+}
+
+/* ---------- colour maps ---------- */
+var MAPS={
+  grey:[[0,0,0],[255,255,255]],
+  heat:[[0,0,0],[60,10,110],[170,30,100],[240,120,30],[255,230,90],[255,255,255]],
+  viridis:[[68,1,84],[59,82,139],[33,145,140],[94,201,98],[253,231,37]]
+};
+function buildLut(name,inv){
+  var st=MAPS[name],lut=new Uint8ClampedArray(768);
+  for(var i=0;i<256;i++){
+    var t=(inv?255-i:i)/255*(st.length-1),a=Math.min(st.length-2,Math.floor(t)),f=t-a;
+    for(var ch=0;ch<3;ch++)lut[i*3+ch]=st[a][ch]+(st[a+1][ch]-st[a][ch])*f;
+  }
+  return lut;
+}
+
+/* ---------- formatting ---------- */
+function fmtHz(v){return v>=1000?(Math.round(v/10)/100)+' kHz':(Math.round(v*10)/10)+' Hz';}
+function fmtT(v,span){
+  if(span>120){var m=Math.floor(v/60),s=Math.floor(v%60);return m+':'+(s<10?'0':'')+s;}
+  var d=span<1?3:span<10?2:span<100?1:0;return v.toFixed(d)+' s';
+}
+function fmtDur(s){var m=Math.floor(s/60),r=s-m*60;return m+':'+(r<10?'0':'')+r.toFixed(1);}
+function niceTicks(a,b,target){
+  var raw=(b-a)/target,mag=Math.pow(10,Math.floor(Math.log10(raw))),n=raw/mag;
+  var step=(n<1.5?1:n<3?2:n<7?5:10)*mag,out=[];
+  for(var v=Math.ceil(a/step)*step;v<=b+1e-9;v+=step)out.push(+v.toFixed(10));
+  return out;
+}
+
+/* ---------- status ---------- */
+function setStatus(t,err){var s=$('status');s.textContent=t||'';s.className='status'+(err?' err':'');}
+function setBar(f){var b=$('bar');b.hidden=f==null;if(f!=null)$('barfill').style.width=Math.round(f*100)+'%';}
+
+/* ---------- view state ---------- */
+function fullView(){return {t0:0,t1:src.len/src.sr,f0:0,f1:src.sr/2};}
+function syncInputs(){
+  $('f0').value=Math.round(view.f0);$('f1').value=Math.round(view.f1);
+  $('t0').value=+view.t0.toFixed(3);$('t1').value=+view.t1.toFixed(3);
+  $('back').disabled=hist.length===0;
+}
+function setView(v,push){
+  if(push&&view)hist.push(view);
+  view=v;syncInputs();compute();
+}
+function readView(){
+  var dur=src.len/src.sr,ny=src.sr/2;
+  var t0=clamp(parseFloat($('t0').value)||0,0,dur),t1=clamp(parseFloat($('t1').value)||dur,0,dur);
+  if(t1-t0<0.02){t1=Math.min(dur,t0+0.02);t0=Math.max(0,t1-0.02);}
+  var f0=clamp(parseFloat($('f0').value)||0,0,ny),f1=clamp(parseFloat($('f1').value)||ny,0,ny);
+  if(f1-f0<10){f1=Math.min(ny,f0+10);f0=Math.max(0,f1-10);}
+  return {t0:t0,t1:t1,f0:f0,f1:f1};
+}
+
+/* ---------- compute ---------- */
+function tick(){return new Promise(function(r){setTimeout(r,0);});}
+async function compute(){
+  if(!src)return;
+  var id=++job;
+  var N=+$('fft').value,cols=+$('cols').value,mode=$('mode').value,sr=src.sr,df=sr/N;
+  var k0=Math.max(0,Math.floor(view.f0/df)),k1=Math.min(N/2,Math.ceil(view.f1/df));
+  if(k1-k0<2){k1=Math.min(N/2,k0+2);k0=Math.max(0,k1-2);}
+  var nb=k1-k0+1,data=new Float32Array(nb*cols),t=getFFT(N),win=t.win;
+  var re=new Float32Array(N),im=new Float32Array(N),buf=new Float32Array(N),tmp=new Float32Array(N);
+  var span=(view.t1-view.t0)*sr,base=view.t0*sr;
+  setStatus('Computing '+cols+' columns at '+Math.round(df*10)/10+' Hz per step.');
+  setBar(0);
+  for(var c=0;c<cols;c++){
+    var start=Math.round(base+(c+0.5)/cols*span-N/2);
+    readMode(src,mode,start,N,tmp,buf);
+    for(var i=0;i<N;i++){re[i]=buf[i]*win[i];im[i]=0;}
+    fft(re,im,t);
+    for(var k=k0;k<=k1;k++){
+      var m=Math.sqrt(re[k]*re[k]+im[k]*im[k]);
+      data[(k-k0)*cols+c]=20*Math.log10(m*2/N+1e-9);
+    }
+    if(c%24===23){
+      setBar(c/cols);
+      await tick();
+      if(id!==job)return;
+    }
+  }
+  if(id!==job)return;
+  mat={data:data,cols:cols,nb:nb,k0:k0,df:df,view:{t0:view.t0,t1:view.t1,f0:view.f0,f1:view.f1}};
+  setBar(null);setStatus('');
+  render();
+}
+
+/* ---------- render ---------- */
+function render(){
+  if(!mat)return;
+  var data=mat.data,cols=mat.cols,nb=mat.nb,k0=mat.k0,df=mat.df,v=mat.view;
+  var floorP=+$('floor').value,ceilP=+$('ceil').value;
+  $('floorv').textContent=floorP+'%';$('ceilv').textContent=ceilP.toFixed(2)+'%';
+  var total=data.length,step=Math.max(1,Math.floor(total/120000)),n=Math.ceil(total/step),smp=new Float32Array(n),q=0;
+  for(var i=0;i<total;i+=step)smp[q++]=data[i];
+  smp=smp.subarray(0,q).sort();
+  var lo=smp[Math.min(q-1,Math.floor(floorP/100*(q-1)))],hi=smp[Math.min(q-1,Math.floor(ceilP/100*(q-1)))];
+  if(hi<=lo+0.1)hi=lo+0.1;
+  var H=800;cv.width=cols;cv.height=H;
+  var im=cctx.createImageData(cols,H),px=im.data,lut=buildLut($('cmap').value,$('inv').checked),inv=1/(hi-lo),o=0;
+  for(var y=0;y<H;y++){
+    var f=v.f1-(y+0.5)/H*(v.f1-v.f0),pos=clamp(f/df-k0,0,nb-1.0001),i0=pos|0,fr=pos-i0,r0=i0*cols,r1=r0+cols;
+    for(var x=0;x<cols;x++){
+      var val=data[r0+x]*(1-fr)+data[r1+x]*fr,nn=(val-lo)*inv;
+      nn=nn<0?0:nn>1?1:nn;
+      var li=((nn*255)|0)*3;
+      px[o++]=lut[li];px[o++]=lut[li+1];px[o++]=lut[li+2];px[o++]=255;
+    }
+  }
+  cctx.putImageData(im,0,0);
+  drawAxes(v);
+  cv.toBlob(function(b){
+    if(!b)return;
+    var u=URL.createObjectURL(b);img.src=u;
+    if(blobUrl)URL.revokeObjectURL(blobUrl);blobUrl=u;
+  },'image/png');
+}
+function scheduleRender(){
+  if(rafPending)return;rafPending=true;
+  requestAnimationFrame(function(){rafPending=false;render();});
+}
+function drawAxes(v){
+  var ya=$('yaxis'),xa=$('xaxis');ya.textContent='';xa.textContent='';
+  var yt=niceTicks(v.f0,v.f1,6);
+  yt.forEach(function(t){
+    var s=document.createElement('span');s.textContent=fmtHz(t);
+    s.style.top=((v.f1-t)/(v.f1-v.f0)*100)+'%';ya.appendChild(s);
+  });
+  var w=stage.clientWidth,span=v.t1-v.t0,xt=niceTicks(v.t0,v.t1,w<500?3:6);
+  xt.forEach(function(t,i){
+    var s=document.createElement('span');s.textContent=fmtT(t,span);
+    var pct=(t-v.t0)/span*100;s.style.left=pct+'%';
+    if(pct<4)s.className='first';else if(pct>96)s.className='last';
+    xa.appendChild(s);
+  });
+}
+
+/* ---------- loading ---------- */
+function setSource(s,name,detail){
+  src=s;hist=[];view=fullView();mat=null;
+  $('fname').textContent=name;$('finfo').textContent=detail;
+  var mono=s.nch<2;
+  Array.prototype.forEach.call($('mode').options,function(o){if(o.value!=='mix'&&o.value!=='L')o.disabled=mono;});
+  if(mono&&($('mode').value==='R'||$('mode').value==='diff'))$('mode').value='mix';
+  syncInputs();compute();
+}
+async function loadFile(file){
+  setStatus('Reading '+file.name+'.');
+  try{
+    var buf=await file.arrayBuffer(),s=parseWav(buf),how='read directly as WAV';
+    if(!s){
+      setStatus('Decoding '+file.name+'. Large compressed files can take a moment.');
+      var AC=window.AudioContext||window.webkitAudioContext,ctx=new AC();
+      var ab=await ctx.decodeAudioData(buf),chs=[];
+      for(var c=0;c<ab.numberOfChannels;c++)chs.push(ab.getChannelData(c));
+      s=arraySource(chs,ab.sampleRate);how='decoded by the browser';
+      if(ctx.close)ctx.close();
+    }
+    var mb=(file.size/1048576).toFixed(1);
+    setSource(s,file.name,fmtDur(s.len/s.sr)+' long, '+s.sr.toLocaleString('en-US')+' Hz, '+(s.nch===1?'mono':s.nch===2?'stereo':s.nch+' channels')+', '+mb+' MB, '+how+'.');
+  }catch(e){
+    setStatus('This file could not be opened. If it is very large or an unusual format, convert it to WAV first, for example: ffmpeg -i input.mp3 output.wav',true);
+  }
+}
+
+/* ---------- presets ---------- */
+var PRESETS={
+  overview:{fft:'2048',cmap:'heat',floor:70,ceil:99.9,cols:'1600'},
+  text:{fft:'2048',cmap:'grey',floor:88,ceil:99.95,cols:'2400'},
+  sharp:{fft:'4096',cmap:'heat',floor:80,ceil:99.9,cols:'2400'}
+};
+function applyPreset(name){
+  var p=PRESETS[name];if(!p)return;
+  $('fft').value=p.fft;$('cmap').value=p.cmap;$('floor').value=p.floor;$('ceil').value=p.ceil;$('cols').value=p.cols;$('inv').checked=false;
+  if(src)compute();else render();
+}
+
+/* ---------- demo clip ---------- */
+function makeDemo(){
+  var sr=22050,dur=9,n=sr*dur,out=new Float32Array(n),i,r,x;
+  var c=document.createElement('canvas');c.width=200;c.height=26;
+  var g=c.getContext('2d');g.fillStyle='#fff';g.font='bold 22px monospace';g.textBaseline='alphabetic';g.fillText('HELLO CTF',6,21);
+  var d=g.getImageData(0,0,200,26).data,rows=26,pcols=200;
+  var i0=Math.round(1*sr),i1=Math.round(7.5*sr),seg=(i1-i0)/pcols;
+  for(r=0;r<rows;r++){
+    var f=5000+(rows-1-r)/(rows-1)*3200,w=2*Math.PI*f/sr,amp=new Float32Array(pcols),any=false;
+    for(x=0;x<pcols;x++){amp[x]=d[(r*pcols+x)*4+3]/255;if(amp[x]>0.05)any=true;}
+    if(!any)continue;
+    for(i=i0;i<i1;i++){var a=amp[Math.min(pcols-1,Math.floor((i-i0)/seg))];if(a>0.05)out[i]+=a*0.03*Math.sin(w*i);}
+  }
+  for(i=0;i<n;i++)out[i]+=(Math.random()-0.5)*0.1+0.05*Math.sin(2*Math.PI*440*i/sr);
+  return arraySource([out],sr);
+}
+
+/* ---------- pointer: drag to zoom, hover readout ---------- */
+function posIn(e){var r=stage.getBoundingClientRect();return {r:r,x:clamp(e.clientX-r.left,0,r.width),y:clamp(e.clientY-r.top,0,r.height)};}
+function updateSel(e){
+  var p=posIn(e),x=Math.min(drag.x,p.x),y=Math.min(drag.y,p.y);
+  sel.style.left=x+'px';sel.style.top=y+'px';sel.style.width=Math.abs(p.x-drag.x)+'px';sel.style.height=Math.abs(p.y-drag.y)+'px';
+}
+stage.addEventListener('pointerdown',function(e){
+  if(!mat||(e.button&&e.button>0))return;
+  var p=posIn(e);drag={x:p.x,y:p.y,w:p.r.width,h:p.r.height};
+  try{stage.setPointerCapture(e.pointerId);}catch(_){}
+  sel.hidden=false;updateSel(e);
+});
+stage.addEventListener('pointermove',function(e){
+  if(drag){updateSel(e);return;}
+  if(!mat)return;
+  var p=posIn(e),v=mat.view;
+  $('readout').textContent=(v.t0+p.x/p.r.width*(v.t1-v.t0)).toFixed(3)+' s   '+Math.round(v.f1-p.y/p.r.height*(v.f1-v.f0)).toLocaleString('en-US')+' Hz';
+});
+stage.addEventListener('pointerleave',function(){if(!drag)$('readout').textContent='';});
+function endDrag(e,apply){
+  if(!drag)return;
+  var p=posIn(e),d=drag;drag=null;sel.hidden=true;
+  if(!apply||!mat)return;
+  var x0=Math.min(d.x,p.x),x1=Math.max(d.x,p.x),y0=Math.min(d.y,p.y),y1=Math.max(d.y,p.y);
+  if(x1-x0<8||y1-y0<8)return;
+  var v=mat.view,dt=v.t1-v.t0,df=v.f1-v.f0;
+  setView({t0:v.t0+x0/d.w*dt,t1:v.t0+x1/d.w*dt,f0:v.f1-y1/d.h*df,f1:v.f1-y0/d.h*df},true);
+}
+stage.addEventListener('pointerup',function(e){endDrag(e,true);});
+stage.addEventListener('pointercancel',function(e){endDrag(e,false);});
+
+/* ---------- wiring ---------- */
+$('file').addEventListener('change',function(e){var f=e.target.files&&e.target.files[0];if(f)loadFile(f);});
+var drop=$('drop');
+['dragenter','dragover'].forEach(function(n){drop.addEventListener(n,function(e){e.preventDefault();drop.classList.add('over');});});
+['dragleave','drop'].forEach(function(n){drop.addEventListener(n,function(e){e.preventDefault();drop.classList.remove('over');});});
+drop.addEventListener('drop',function(e){var f=e.dataTransfer&&e.dataTransfer.files&&e.dataTransfer.files[0];if(f)loadFile(f);});
+['f0','f1','t0','t1'].forEach(function(id){$(id).addEventListener('change',function(){if(src)setView(readView(),true);});});
+['fft','cols','mode'].forEach(function(id){$(id).addEventListener('change',function(){if(src)compute();});});
+['cmap','inv'].forEach(function(id){$(id).addEventListener('change',scheduleRender);});
+['floor','ceil'].forEach(function(id){$(id).addEventListener('input',scheduleRender);});
+$('back').addEventListener('click',function(){if(hist.length){view=hist.pop();syncInputs();compute();}});
+$('reset').addEventListener('click',function(){if(src){hist=[];setView(fullView(),false);}});
+Array.prototype.forEach.call(document.querySelectorAll('[data-preset]'),function(b){
+  b.addEventListener('click',function(){applyPreset(b.getAttribute('data-preset'));});
+});
+window.addEventListener('resize',function(){if(mat)drawAxes(mat.view);});
+
+/* ---------- start with the demo ---------- */
+$('fft').value='1024';
+setSource(makeDemo(),'Demo clip (generated here)','Sample with the words HELLO CTF drawn into the sound. Load your own file above.');
+})();
+</script>
+
+</body>
+</html>
